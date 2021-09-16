@@ -75,10 +75,13 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	int i;
+	int aux;
 	static const char *gpvtg_msg = "$PSTMNMEAREQUEST, 10, 0\n\r";
 	static const char *gpgll_msg = "$PSTMNMEAREQUEST, 100000, 0\n\r";
-	char posicao[I2C_BUF_SIZE];
-	char velocidade[I2C_BUF_SIZE];
+	char buf_posicao[I2C_BUF_SIZE] = {0};
+	char buf_velocidade[I2C_BUF_SIZE] = {0};
+	char posicao[22] = {0};
+	char velocidade[6] = {0};
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -116,21 +119,17 @@ int main(void)
 	  HAL_I2C_Init(&hi2c1);
 
 	  //Aquisição de posição
-	  HAL_I2C_Master_Transmit(&hi2c1, 0x3A << 1, (uint8_t *)gpgll_msg, strlen(gpgll_msg), 2000);
-	  for (posicao[180-1] = 0; posicao[180-1] != 0xff;) {
-		  HAL_I2C_Master_Receive(&hi2c1, 0x3A << 1, posicao, 180, 2000);
-		  for (i = 0; i < 180; ++i){
-			  if (posicao[i] != 0xff) HAL_UART_Transmit(&huart2, &posicao[i], 1, 1000);
-	  	  }
+	  HAL_I2C_Master_Transmit(&hi2c1, 0x3A << 1, (int8_t *)gpgll_msg, strlen(gpgll_msg), 2000);
+	  for (buf_posicao[180-1] = 0; buf_posicao[180-1] != 0xff;) {
+		  HAL_I2C_Master_Receive(&hi2c1, 0x3A << 1, buf_posicao, 180, 2000);
+		  for (i = 0; i < 180; ++i) if (buf_posicao[i] != 0xff) HAL_UART_Transmit(&huart2, &buf_posicao[i], 1, 1000);
 	  }
 
 	  //Aquisição de velocidade
-	  HAL_I2C_Master_Transmit(&hi2c1, 0x3A << 1, (uint8_t *)gpvtg_msg, strlen(gpvtg_msg), 2000);
-	  for (velocidade[180-1] = 0; velocidade[180-1] != 0xff;) {
-		  HAL_I2C_Master_Receive(&hi2c1, 0x3A << 1, velocidade, 180, 2000);
-		  for (i = 0; i < 180; ++i){
-			  if (posicao[i] != 0xff) HAL_UART_Transmit(&huart2, &velocidade[i], 1, 1000);
-		  }
+	  HAL_I2C_Master_Transmit(&hi2c1, 0x3A << 1, (int8_t *)gpvtg_msg, strlen(gpvtg_msg), 2000);
+	  for (buf_velocidade[180-1] = 0; buf_velocidade[180-1] != 0xff;) {
+		  HAL_I2C_Master_Receive(&hi2c1, 0x3A << 1, buf_velocidade, 180, 2000);
+		  for (i = 0; i < 180; ++i) if (buf_velocidade[i] != 0xff) HAL_UART_Transmit(&huart2, &buf_velocidade[i], 1, 1000);
 	  Console_Write("\r\n");
 	  HAL_Delay(500);
 	  }
