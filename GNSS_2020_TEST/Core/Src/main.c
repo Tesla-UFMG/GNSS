@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "../inc/GNSSDriver.h"
 
 /* USER CODE END Includes */
 
@@ -32,6 +33,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define MAX_NMEA_LEN 128
+#define TX_TIMEOUT 1000
 
 /* USER CODE END PD */
 
@@ -42,7 +44,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart1;
-UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart6;
+DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
 
@@ -51,8 +54,9 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_USART2_UART_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_USART6_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -60,6 +64,7 @@ static void MX_USART1_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 uint8_t rx_buff[MAX_NMEA_LEN];
+bool new_data = false;
 
 /* USER CODE END 0 */
 
@@ -90,9 +95,16 @@ int main(void) {
 
 	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
-	MX_USART2_UART_Init();
+	MX_DMA_Init();
 	MX_USART1_UART_Init();
+	MX_USART6_UART_Init();
 	/* USER CODE BEGIN 2 */
+	HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
+
+//	char test_rx_buffer[] =
+//	    ",V,0000.00000,N,00000.00000,E,0.0,0.0,190925,,,N*74\n "
+//	    "$GPGGA,123105.000,0000.00000,N,00000.00000,E,0,02,99.0,100.00,M,0.0,M,,*"
+//	    "6A\n$GPVTG,0.0,T,,M,0.0,";
 
 	/* USER CODE END 2 */
 
@@ -102,34 +114,100 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-		char nmea_buffer[MAX_NMEA_LEN];
-		int nmea_index = 0;
-		bool message_started = false;
-		if (HAL_UART_Receive(&huart1, rx_buff, MAX_NMEA_LEN, 1000) == HAL_OK) //if transfer is successful
-				{
-			// identifica o inicio ($) e fim (/r/n) da mensagem
-			for (int i = 0; i < 256; ++i) {
-				char c = rx_buff[i];
-				if (c == '$') {
-					nmea_index = 0;
-					message_started = true;
+		if (new_data) {
+			// novos dados chegaram no DMA
+			new_data = false;
+
+			// primeira coisa é filtrar onde começa e onde termina a mensagem
+			int start_idx = -1, end_idx = -1;
+			for (int i = 0; i < MAX_NMEA_LEN; ++i) {
+				char current_char = rx_buff[i];
+				if (current_char == '$') {
+					start_idx = i;
 				}
 
-				if (message_started) {
-					if (c == '\n') {     // end of message
-						nmea_buffer[nmea_index] = '\0';
-						message_started = false;
-
-					} else if (nmea_index < MAX_NMEA_LEN - 1) {
-						nmea_buffer[nmea_index++] = c;     // store char
-					}
+				if (start_idx != -1 && current_char == '\n') {
+					// terminou a mensagem
+					end_idx = i + 1; // inclui o \n tambem
+					break;
 				}
 			}
 
-			__NOP();
-		} else {
-			__NOP();
+			if (start_idx == -1 || end_idx == -1) {
+				// sem mensagem
+				continue;
+			}
+
+			if (end_idx <= start_idx) {
+				// sem mensagem
+				continue;
+			}
+
+			// index de inicio e fim determinados. salva a sentenca
+			uint8_t sentence_size = end_idx - start_idx;
+			char *nmea_sentence = (char*) malloc(sentence_size * sizeof(char));
+
+			for (int i = 0; i < sentence_size; ++i) {
+				nmea_sentence[i] = rx_buff[start_idx + i];
+			}
+
+			// nmea_sentence agora contem uma sentença nema. joga para os parsers
+			gnss_data_t gnss_data;
+
+			if (init(&gnss_data) != NO_ERROR) {
+				continue; // falha na inicializacao
+			}
+
+			NMEA_Type nmea_type = NMEA_UNKNOWN;
+
+			if (classify_nmea(&nmea_type, nmea_sentence) != NO_ERROR) {
+				continue; // falha na classificacao
+			}
+
+			switch (nmea_type) {
+			case NMEA_GPGGA: {
+				if (parse_gpgga(&gnss_data, nmea_sentence) != NO_ERROR) {
+					continue; // falha no parse
+				}
+				break;
+			}
+
+			case NMEA_GPRMC: {
+				if (parse_gprmc(&gnss_data, nmea_sentence) != NO_ERROR) {
+					continue; // falha no parse
+				}
+				break;
+			}
+			case NMEA_UNKNOWN:
+			case NMEA_GPVTG:
+			case NMEA_GPGSA:
+			case NMEA_GPGSV:
+			case NMEA_GPGLL:
+			case NMEA_PSTMCPU:
+				break;
+
+			}
+
+			char uart_output_message[MAX_NMEA_LEN] = { '\0' };
+			if (save_to_message(&gnss_data, uart_output_message, MAX_NMEA_LEN)
+					!= NO_ERROR) {
+				continue; // messaging failed
+			}
+
+			free(nmea_sentence);
+			nmea_sentence = NULL;
+
+			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+			HAL_UART_Transmit(&huart6, (uint8_t*) uart_output_message,
+					MAX_NMEA_LEN,
+					TX_TIMEOUT);
+
 		}
+
+//		if (new_data) {
+//			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+//			new_data = false;
+//		}
 
 	}
 	/* USER CODE END 3 */
@@ -210,33 +288,48 @@ static void MX_USART1_UART_Init(void) {
 }
 
 /**
- * @brief USART2 Initialization Function
+ * @brief USART6 Initialization Function
  * @param None
  * @retval None
  */
-static void MX_USART2_UART_Init(void) {
+static void MX_USART6_UART_Init(void) {
 
-	/* USER CODE BEGIN USART2_Init 0 */
+	/* USER CODE BEGIN USART6_Init 0 */
 
-	/* USER CODE END USART2_Init 0 */
+	/* USER CODE END USART6_Init 0 */
 
-	/* USER CODE BEGIN USART2_Init 1 */
+	/* USER CODE BEGIN USART6_Init 1 */
 
-	/* USER CODE END USART2_Init 1 */
-	huart2.Instance = USART2;
-	huart2.Init.BaudRate = 9600;
-	huart2.Init.WordLength = UART_WORDLENGTH_8B;
-	huart2.Init.StopBits = UART_STOPBITS_1;
-	huart2.Init.Parity = UART_PARITY_NONE;
-	huart2.Init.Mode = UART_MODE_RX;
-	huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-	huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-	if (HAL_UART_Init(&huart2) != HAL_OK) {
+	/* USER CODE END USART6_Init 1 */
+	huart6.Instance = USART6;
+	huart6.Init.BaudRate = 9600;
+	huart6.Init.WordLength = UART_WORDLENGTH_8B;
+	huart6.Init.StopBits = UART_STOPBITS_1;
+	huart6.Init.Parity = UART_PARITY_NONE;
+	huart6.Init.Mode = UART_MODE_TX_RX;
+	huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+	if (HAL_UART_Init(&huart6) != HAL_OK) {
 		Error_Handler();
 	}
-	/* USER CODE BEGIN USART2_Init 2 */
+	/* USER CODE BEGIN USART6_Init 2 */
 
-	/* USER CODE END USART2_Init 2 */
+	/* USER CODE END USART6_Init 2 */
+
+}
+
+/**
+ * Enable DMA controller clock
+ */
+static void MX_DMA_Init(void) {
+
+	/* DMA controller clock enable */
+	__HAL_RCC_DMA2_CLK_ENABLE();
+
+	/* DMA interrupt init */
+	/* DMA2_Stream2_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
 
 }
 
@@ -268,6 +361,14 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
+	/*Configure GPIO pins : USART_TX_Pin USART_RX_Pin */
+	GPIO_InitStruct.Pin = USART_TX_Pin | USART_RX_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
+	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
 	/*Configure GPIO pin : LD2_Pin */
 	GPIO_InitStruct.Pin = LD2_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -287,8 +388,31 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+	HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
+	new_data = true;
+}
 /* USER CODE END 4 */
+
+/**
+ * @brief  Period elapsed callback in non blocking mode
+ * @note   This function is called  when TIM1 interrupt took place, inside
+ * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+ * a global variable "uwTick" used as application time base.
+ * @param  htim : TIM handle
+ * @retval None
+ */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	/* USER CODE BEGIN Callback 0 */
+
+	/* USER CODE END Callback 0 */
+	if (htim->Instance == TIM1) {
+		HAL_IncTick();
+	}
+	/* USER CODE BEGIN Callback 1 */
+
+	/* USER CODE END Callback 1 */
+}
 
 /**
  * @brief  This function is executed in case of error occurrence.
