@@ -6,6 +6,7 @@
 
 #define KNOTS_TO_KMH_CONVERSION 1.852
 #define GNSS_CAN_ID 305
+#define TIMEZONE_OFFSET 3 * 3600 * (-1)
 
 typedef enum {
     VALID_FIX = 0,
@@ -40,11 +41,6 @@ typedef enum {
     NMEA_UNKNOWN = 0,
     NMEA_GPRMC,
     NMEA_GPGGA,
-    NMEA_GPVTG,
-    NMEA_GPGSA,
-    NMEA_GPGSV,
-    NMEA_GPGLL,
-    NMEA_PSTMCPU
 } NMEA_Type;
 
 error_code_t init(gnss_data_t*);

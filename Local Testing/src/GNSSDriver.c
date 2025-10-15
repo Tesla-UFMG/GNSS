@@ -1,6 +1,6 @@
 #include "../inc/GNSSDriver.h"
 
-// helper local functions
+// ------- local helpers --------
 static double nmea_to_decimal(const char* nmea, const char* hemisphere) {
   if (strlen(nmea) < 4) return 0.0;
 
@@ -18,6 +18,30 @@ static double nmea_to_decimal(const char* nmea, const char* hemisphere) {
   return decimal;
 }
 
+static uint64_t toUnixMillis(gnss_data_t* gnss_data) {
+  struct tm t;
+
+  t.tm_year = gnss_data->utc_date.year + 2000 - 1900;  // struct tm years since 1900
+  t.tm_mon = gnss_data->utc_date.month - 1;     // struct tm months 0–11
+  t.tm_mday = gnss_data->utc_date.day;
+  t.tm_hour = gnss_data->utc_time.hh;
+  t.tm_min = gnss_data->utc_time.mm;
+  t.tm_sec = (int)gnss_data->utc_time.ss;
+  t.tm_isdst = -1;  // auto daylight saving time
+
+  // Convert to seconds since Unix epoch (UTC)
+  time_t seconds = mktime(&t) + TIMEZONE_OFFSET;
+
+  // adds the miliseconds again
+  uint64_t unix_timestamp =
+      (uint64_t)seconds * 1000 +
+      (gnss_data->utc_time.ss - (int)gnss_data->utc_time.ss);
+
+  // Return milliseconds
+  return unix_timestamp;
+}
+
+// ------- driver functions --------
 error_code_t init(gnss_data_t* gnss_data) {
   if (gnss_data == NULL) {
     return ERROR_BAD_ARGUMENT;
@@ -169,12 +193,12 @@ error_code_t classify_nmea(NMEA_Type* nmea_type, char* sentence) {
 }
 
 error_code_t save_to_message(gnss_data_t* gnss_data, char* message, int size) {
-  snprintf(message, size,
-             "%d,%.8f,%.8f,%.2f",
-             GNSS_CAN_ID,
-             gnss_data->latitude,
-             gnss_data->longitude,
-             gnss_data->altitude);
+  // converte a data para UNIX timestamp
+  uint64_t unix_timestamp = toUnixMillis(gnss_data);
+
+  snprintf(message, size, "%d,%.8f,%.8f,%.2f,%.2f,%lu", GNSS_CAN_ID,
+           gnss_data->latitude, gnss_data->longitude, gnss_data->altitude,
+           gnss_data->ground_speed, unix_timestamp);
 
   return NO_ERROR;
 }

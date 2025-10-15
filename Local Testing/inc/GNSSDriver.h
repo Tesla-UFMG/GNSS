@@ -6,6 +6,7 @@
 
 #define KNOTS_TO_KMH_CONVERSION 1.852
 #define GNSS_CAN_ID 305
+#define TIMEZONE_OFFSET 3 * 3600 * (-1)
 
 typedef enum {
     VALID_FIX = 0,
@@ -53,5 +54,6 @@ error_code_t parse_gpgga(gnss_data_t* gnss_data, char* sentence);
 error_code_t parse_gprmc(gnss_data_t* gnss_data, char* sentence);
 error_code_t classify_nmea(NMEA_Type* nmea_type, char* sentence);
 error_code_t save_to_message(gnss_data_t* gnss_data, char* message, int size);
+
 
 #endif // GNSS_DRIVER_H

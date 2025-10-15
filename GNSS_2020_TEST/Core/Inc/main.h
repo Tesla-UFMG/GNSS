@@ -37,6 +37,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <time.h>
 
 /* USER CODE END Includes */
 

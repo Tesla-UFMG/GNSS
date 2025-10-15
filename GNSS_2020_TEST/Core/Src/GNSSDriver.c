@@ -1,25 +1,47 @@
 #include "../inc/GNSSDriver.h"
 
-// helper local functions
-static double nmea_to_decimal(const char *nmea, const char *hemisphere) {
-	if (strlen(nmea) < 4)
-		return 0.0;
+// ------- local helpers --------
+static double nmea_to_decimal(const char* nmea, const char* hemisphere) {
+  if (strlen(nmea) < 4) return 0.0;
 
-	// Split degrees and minutes
-	int deg_len = (hemisphere[0] == 'N' || hemisphere[0] == 'S') ? 2 : 3;
-	char deg_str[4] = { 0 };
-	strncpy(deg_str, nmea, deg_len);
-	int degrees = atoi(deg_str);
+  // Split degrees and minutes
+  int deg_len = (hemisphere[0] == 'N' || hemisphere[0] == 'S') ? 2 : 3;
+  char deg_str[4] = {0};
+  strncpy(deg_str, nmea, deg_len);
+  int degrees = atoi(deg_str);
 
-	double minutes = atof(nmea + deg_len);
-	double decimal = degrees + (minutes / 60.0);
+  double minutes = atof(nmea + deg_len);
+  double decimal = degrees + (minutes / 60.0);
 
-	if (hemisphere[0] == 'S' || hemisphere[0] == 'W')
-		decimal *= -1.0;
+  if (hemisphere[0] == 'S' || hemisphere[0] == 'W') decimal *= -1.0;
 
-	return decimal;
+  return decimal;
 }
 
+static uint64_t toUnixMillis(gnss_data_t* gnss_data) {
+  struct tm t;
+
+  t.tm_year = gnss_data->utc_date.year + 2000 - 1900;  // struct tm years since 1900
+  t.tm_mon = gnss_data->utc_date.month - 1;     // struct tm months 0–11
+  t.tm_mday = gnss_data->utc_date.day;
+  t.tm_hour = gnss_data->utc_time.hh;
+  t.tm_min = gnss_data->utc_time.mm;
+  t.tm_sec = (int)gnss_data->utc_time.ss;
+  t.tm_isdst = -1;  // auto daylight saving time
+
+  // Convert to seconds since Unix epoch (UTC)
+  time_t seconds = mktime(&t) + TIMEZONE_OFFSET;
+
+  // adds the miliseconds again
+  uint64_t unix_timestamp =
+      (uint64_t)seconds * 1000 +
+      (gnss_data->utc_time.ss - (int)gnss_data->utc_time.ss);
+
+  // Return milliseconds
+  return unix_timestamp;
+}
+
+// ------- driver functions --------
 error_code_t init(gnss_data_t *gnss_data) {
 	if (gnss_data == NULL) {
 		return ERROR_BAD_ARGUMENT;
@@ -162,26 +184,22 @@ error_code_t classify_nmea(NMEA_Type* nmea_type, char* sentence) {
 
     if (strncmp(sentence + 1, "GPRMC", 5) == 0) *nmea_type = NMEA_GPRMC;
     if (strncmp(sentence + 1, "GPGGA", 5) == 0) *nmea_type = NMEA_GPGGA;
-    if (strncmp(sentence + 1, "GPVTG", 5) == 0) *nmea_type = NMEA_GPVTG;
-    if (strncmp(sentence + 1, "GPGSA", 5) == 0) *nmea_type = NMEA_GPGSA;
-    if (strncmp(sentence + 1, "GPGSV", 5) == 0) *nmea_type = NMEA_GPGSV;
-    if (strncmp(sentence + 1, "GPGLL", 5) == 0) *nmea_type = NMEA_GPGLL;
-    if (strncmp(sentence + 1, "PSTMCPU", 7) == 0) *nmea_type = NMEA_PSTMCPU;
-
-    if (*nmea_type == NMEA_UNKNOWN) {
-    	return ERROR_BAD_ARGUMENT;
-    }
 
     return NO_ERROR;
 }
 
 error_code_t save_to_message(gnss_data_t* gnss_data, char* message, int size) {
-  snprintf(message, size,
-             "%d,%.8f,%.8f,%.2f\r\n",
-             GNSS_CAN_ID,
-             gnss_data->latitude,
-             gnss_data->longitude,
-             gnss_data->altitude);
+	  // converte a data para UNIX timestamp
+//	  uint64_t unix_timestamp = toUnixMillis(gnss_data);
+	  uint64_t unix_timestamp = 0;
+
+	  if (gnss_data->latitude == 0) {
+		  unix_timestamp = 0;
+	  }
+
+	  snprintf(message, size, "%d,%.8f,%.8f,%.2f,%.2f,%llu\r\n", GNSS_CAN_ID,
+	           gnss_data->latitude, gnss_data->longitude, gnss_data->altitude,
+	           gnss_data->ground_speed, unix_timestamp);
 
   return NO_ERROR;
 }

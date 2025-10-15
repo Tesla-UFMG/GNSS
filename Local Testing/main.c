@@ -15,14 +15,15 @@ char test_rx_buffer[] =
     "$GPGGA,123105.000,0000.00000,N,00000.00000,E,0,02,99.0,100.00,M,0.0,M,,*"
     "6A\n$GPVTG,0.0,T,,M,0.0,";
 
-// ,V,0000.00000,N,00000.00000,E,0.0,0.0,190925,,,N*74
-// $GPGGA,123105.000,0000.00000,N,00000.00000,E,0,02,99.0,100.00,M,0.0,M,,*6A
-// $GPVTG,0.0,T,,M,0.0,N,0.0,K,N*02
-// $GNGSA,A,1,19,11,,,,,,,,,,,99.0,99.0,99.0*16
-// $GNGSA,A,1,,,,,,,,,,,,,99.0,99.0,99.0*1E
-// $GPGSV,1,1,03,19,00,000,31,11,00,000,42,06,00,000,29,,,,*4B
-// $GPGLL,0000.00000,N,00000.00000,E,123105.000,V,N*45
-// $PSTMCPU,55.05,-1,
+// char test_rx_buffer[] =
+//     ",V,0000.00000,N,00000.00000,E,0.0,0.0,190925,,,N*74\n"
+//     "$GPGGA,123105.000,0000.00000,N,00000.00000,E,0,02,99.0,100.00,M,0.0,M,,*6A\n"
+//     "$GPVTG,0.0,T,,M,0.0,N,0.0,K,N*02\n"
+//     "$GNGSA,A,1,19,11,,,,,,,,,,,99.0,99.0,99.0*16\n"
+//     "$GNGSA,A,1,,,,,,,,,,,,,99.0,99.0,99.0*1E\n"
+//     "$GPGSV,1,1,03,19,00,000,31,11,00,000,42,06,00,000,29,,,,*4B\n"
+//     "$GPGLL,0000.00000,N,00000.00000,E,123105.000,V,N*45\n"
+//     "$PSTMCPU,55.05,-1,";
 
 int main() {
   gnss_data_t gnss_data;
@@ -66,35 +67,35 @@ int main() {
     return -1;
   }
 
-  //   int start_idx = -1, end_idx = -1;
-  //   for (int i = 0; i < MAX_NMEA_LEN; ++i) {
-  //     char current_char = test_rx_buffer[i];
-  //     if (current_char == '$') {
-  //       start_idx = i;
-  //     }
-
-  //     if (start_idx != -1 && current_char == '\n') {
-  //       // terminou a mensagem
-  //       end_idx = i;
-  //       break;
-  //     }
+  // int start_idx = -1, end_idx = -1;
+  // for (int i = 0; i < MAX_NMEA_LEN; ++i) {
+  //   char current_char = test_rx_buffer[i];
+  //   if (current_char == '$') {
+  //     start_idx = i;
   //   }
 
-  //   if (start_idx == -1 || end_idx == -1) {
-  //     // sem mensagem
-  //     return 0;
+  //   if (start_idx != -1 && current_char == '\n') {
+  //     // terminou a mensagem
+  //     end_idx = i;
+  //     break;
   //   }
+  // }
 
-  //   // index de inicio e fim determinados. salva no nmea_message
-  //   uint8_t message_size = end_idx - start_idx;
-  //   char *nmea_message = (char *)malloc(message_size * sizeof(char));
+  // if (start_idx == -1 || end_idx == -1) {
+  //   // sem mensagem
+  //   return 0;
+  // }
 
-  //   for (int i = 0; i < message_size; ++i) {
-  //     nmea_message[i] = test_rx_buffer[start_idx + i];
-  //   }
+  // // index de inicio e fim determinados. salva no nmea_message
+  // uint8_t message_size = end_idx - start_idx;
+  // char *nmea_message = (char *)malloc(message_size * sizeof(char));
 
-  //   free(nmea_message);
-  //   nmea_message = NULL;
+  // for (int i = 0; i < message_size; ++i) {
+  //   nmea_message[i] = test_rx_buffer[start_idx + i];
+  // }
+
+  // free(nmea_message);
+  // nmea_message = NULL;
 
   return 0;
 }

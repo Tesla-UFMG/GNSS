@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "../inc/GNSSDriver.h"
+#include "../inc/state_machine.h"
 
 /* USER CODE END Includes */
 
@@ -33,7 +34,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define MAX_NMEA_LEN 128
-#define TX_TIMEOUT 1000
+#define TX_TIMEOUT 500
 
 /* USER CODE END PD */
 
@@ -43,6 +44,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_usart1_rx;
@@ -57,6 +60,7 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART6_UART_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -64,7 +68,13 @@ static void MX_USART6_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 uint8_t rx_buff[MAX_NMEA_LEN];
-bool new_data = false;
+
+// inicializa a estrutura que salva os dados do gnss
+gnss_data_t gnss_data;
+
+
+// inicializa maquina de estados
+system_state_t system_state = STATE_IDLE;
 
 /* USER CODE END 0 */
 
@@ -98,8 +108,12 @@ int main(void) {
 	MX_DMA_Init();
 	MX_USART1_UART_Init();
 	MX_USART6_UART_Init();
+	MX_TIM2_Init();
 	/* USER CODE BEGIN 2 */
+	init(&gnss_data);
+
 	HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
+	HAL_TIM_Base_Start_IT(&htim2);
 
 //	char test_rx_buffer[] =
 //	    ",V,0000.00000,N,00000.00000,E,0.0,0.0,190925,,,N*74\n "
@@ -114,10 +128,10 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-		if (new_data) {
-			// novos dados chegaram no DMA
-			new_data = false;
+		switch (system_state) {
 
+		case STATE_RECEIVE_UART: {
+			// novos dados chegaram no DMA
 			// primeira coisa é filtrar onde começa e onde termina a mensagem
 			int start_idx = -1, end_idx = -1;
 			for (int i = 0; i < MAX_NMEA_LEN; ++i) {
@@ -151,13 +165,7 @@ int main(void) {
 				nmea_sentence[i] = rx_buff[start_idx + i];
 			}
 
-			// nmea_sentence agora contem uma sentença nema. joga para os parsers
-			gnss_data_t gnss_data;
-
-			if (init(&gnss_data) != NO_ERROR) {
-				continue; // falha na inicializacao
-			}
-
+			// nmea_sentence agora contem uma sentença nmea. joga para os parsers
 			NMEA_Type nmea_type = NMEA_UNKNOWN;
 
 			if (classify_nmea(&nmea_type, nmea_sentence) != NO_ERROR) {
@@ -179,14 +187,18 @@ int main(void) {
 				break;
 			}
 			case NMEA_UNKNOWN:
-			case NMEA_GPVTG:
-			case NMEA_GPGSA:
-			case NMEA_GPGSV:
-			case NMEA_GPGLL:
-			case NMEA_PSTMCPU:
 				break;
-
 			}
+
+			free(nmea_sentence);
+			nmea_sentence = NULL;
+
+			change_state(&system_state, STATE_IDLE);
+			break;
+		}
+
+		case STATE_SEND_UART: {
+			// timer disparou: faz o envio
 
 			char uart_output_message[MAX_NMEA_LEN] = { '\0' };
 			if (save_to_message(&gnss_data, uart_output_message, MAX_NMEA_LEN)
@@ -194,20 +206,19 @@ int main(void) {
 				continue; // messaging failed
 			}
 
-			free(nmea_sentence);
-			nmea_sentence = NULL;
-
 			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 			HAL_UART_Transmit(&huart6, (uint8_t*) uart_output_message,
-					MAX_NMEA_LEN,
-					TX_TIMEOUT);
+			MAX_NMEA_LEN,
+			TX_TIMEOUT);
 
+			change_state(&system_state, STATE_IDLE);
+			break;
 		}
-
-//		if (new_data) {
-//			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-//			new_data = false;
-//		}
+		case STATE_IDLE:
+		default: {
+			break;
+		}
+		}
 
 	}
 	/* USER CODE END 3 */
@@ -254,6 +265,55 @@ void SystemClock_Config(void) {
 	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
 		Error_Handler();
 	}
+}
+
+/**
+ * @brief TIM2 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM2_Init(void) {
+
+	/* USER CODE BEGIN TIM2_Init 0 */
+
+	/* USER CODE END TIM2_Init 0 */
+
+	TIM_ClockConfigTypeDef sClockSourceConfig = { 0 };
+	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
+
+	/* USER CODE BEGIN TIM2_Init 1 */
+	// (Period + 1) * (Prescaler + 1) = Timer_Clock / Frequency
+	// Timer_Clock = APB1 (84 Mhz)
+	// Frequency = o que queremos (coloquei 1 Hz por enquanto)
+	// Prescaler = 8399 timer counts at 84 MHz / (8399 + 1) = 10 kHz
+	// Period = 9999: interrupt every 10000 / 10000 Hz = 1 s
+	/* USER CODE END TIM2_Init 1 */
+	htim2.Instance = TIM2;
+	htim2.Init.Prescaler = 8399;
+	htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim2.Init.Period = 4999;
+	htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_Base_Init(&htim2) != HAL_OK) {
+		Error_Handler();
+	}
+	sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+	if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK) {
+		Error_Handler();
+	}
+	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+	if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig)
+			!= HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN TIM2_Init 2 */
+	// Enable interrupt
+	HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(TIM2_IRQn);
+
+	/* USER CODE END TIM2_Init 2 */
+
 }
 
 /**
@@ -390,7 +450,7 @@ static void MX_GPIO_Init(void) {
 /* USER CODE BEGIN 4 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
-	new_data = true;
+	change_state(&system_state, STATE_RECEIVE_UART);
 }
 /* USER CODE END 4 */
 
@@ -410,6 +470,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 		HAL_IncTick();
 	}
 	/* USER CODE BEGIN Callback 1 */
+	if (htim->Instance == TIM2) {
+		change_state(&system_state, STATE_SEND_UART);
+	}
 
 	/* USER CODE END Callback 1 */
 }
