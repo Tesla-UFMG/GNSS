@@ -190,8 +190,8 @@ error_code_t classify_nmea(NMEA_Type* nmea_type, char* sentence) {
 
 error_code_t save_to_message(gnss_data_t* gnss_data, char* message, int size) {
 	  // converte a data para UNIX timestamp
-//	  uint64_t unix_timestamp = toUnixMillis(gnss_data);
-	  uint64_t unix_timestamp = 0;
+	  uint64_t unix_timestamp = toUnixMillis(gnss_data);
+//	  uint64_t unix_timestamp = 0;
 
 	  if (gnss_data->latitude == 0) {
 		  unix_timestamp = 0;
