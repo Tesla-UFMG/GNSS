@@ -449,6 +449,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
 	change_state(&system_state, STATE_RECEIVE_UART);
 }
+
+// Restarts the DMA reception on UART1 whenever a framing error occurs
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+	if(huart->Instance == USART1)
+	{
+		HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
+	}
+}
 /* USER CODE END 4 */
 
 /**
