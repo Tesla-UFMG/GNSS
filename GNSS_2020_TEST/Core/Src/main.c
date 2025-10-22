@@ -112,7 +112,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
 	init(&gnss_data);
 
-	HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
+//	HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
 	HAL_TIM_Base_Start_IT(&htim2);
 
 //	char test_rx_buffer[] =
@@ -445,18 +446,23 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
-	change_state(&system_state, STATE_RECEIVE_UART);
-}
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+//	HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
+//	change_state(&system_state, STATE_RECEIVE_UART);
+//}
+//
+//// Restarts the DMA reception on UART1 whenever a framing error occurs
+//void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+//{
+//	if(huart->Instance == USART1)
+//	{
+//		HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
+//	}
+//}
 
-// Restarts the DMA reception on UART1 whenever a framing error occurs
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-	if(huart->Instance == USART1)
-	{
-		HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
-	}
+	change_state(&system_state, STATE_RECEIVE_UART);
 }
 /* USER CODE END 4 */
 
