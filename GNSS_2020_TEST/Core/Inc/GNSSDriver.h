@@ -5,7 +5,7 @@
 #include "typedefs.h"
 
 #define KNOTS_TO_KMH_CONVERSION 1.852
-#define GNSS_CAN_ID 305
+#define GNSS_CAN_ID 262
 #define TIMEZONE_OFFSET 3 * 3600 * (-1)
 
 typedef enum {

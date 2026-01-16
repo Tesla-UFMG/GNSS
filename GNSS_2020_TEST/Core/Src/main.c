@@ -185,7 +185,7 @@ int main(void)
 
 		case STATE_SEND_UART: {
 			// timer disparou: faz o envio
-			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+//			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
 			char uart_output_message[MAX_NMEA_LEN] = { '\0' };
 			if (save_to_message(&gnss_data, uart_output_message, MAX_NMEA_LEN)
@@ -408,7 +408,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, TESEO_WU_Pin|TESEO_Rn_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, TESEO_RESET_Pin|TESEO_WAKEUP_Pin, GPIO_PIN_SET);
@@ -427,12 +427,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pins : TESEO_WU_Pin TESEO_Rn_Pin */
+  GPIO_InitStruct.Pin = TESEO_WU_Pin|TESEO_Rn_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : TESEO_RESET_Pin TESEO_WAKEUP_Pin */
   GPIO_InitStruct.Pin = TESEO_RESET_Pin|TESEO_WAKEUP_Pin;
