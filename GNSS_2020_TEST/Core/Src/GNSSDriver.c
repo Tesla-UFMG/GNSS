@@ -197,9 +197,9 @@ error_code_t save_to_message(gnss_data_t* gnss_data, char* message, int size) {
 		  unix_timestamp = 0;
 	  }
 
-	  snprintf(message, size, "%d,%.8f,%.8f,%.2f,%.2f,%llu\r\n", GNSS_CAN_ID,
+	  snprintf(message, size, "%d,%.8f,%.8f,%.2f,%.2f,%u,%llu\r\n", GNSS_CAN_ID,
 	           gnss_data->latitude, gnss_data->longitude, gnss_data->altitude,
-	           gnss_data->ground_speed, unix_timestamp);
+	           gnss_data->ground_speed, gnss_data->fix_quality, unix_timestamp);
 
   return NO_ERROR;
 }

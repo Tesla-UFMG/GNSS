@@ -125,6 +125,20 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+//	uint8_t change_baud[MAX_NMEA_LEN] = "$PSTMSETPAR,3102,0xA*12\r\n";
+//	uint8_t change_sample_rate[MAX_NMEA_LEN] = "$PSTMSETPAR,1303,0.2*36\r\n";
+//
+//	uint8_t save_par[MAX_NMEA_LEN] = "$PSTMSAVEPAR*58\r\n";
+//	uint8_t reset[MAX_NMEA_LEN] = "$PSTMSRR*49\r\n";
+//
+//	HAL_UART_Transmit(&huart1, change_sample_rate, MAX_NMEA_LEN, 1000);
+//	HAL_UART_Transmit(&huart1, save_par, MAX_NMEA_LEN, 1000);
+//	HAL_UART_Transmit(&huart1, reset, MAX_NMEA_LEN, 1000);
+//
+//	while (1) {
+//
+//	}
+
 	while (1) {
     /* USER CODE END WHILE */
 
@@ -281,7 +295,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 8399;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4999;
+  htim2.Init.Period = 1999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -324,7 +338,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 9600;
+  huart1.Init.BaudRate = 115200;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -357,7 +371,7 @@ static void MX_USART6_UART_Init(void)
 
   /* USER CODE END USART6_Init 1 */
   huart6.Instance = USART6;
-  huart6.Init.BaudRate = 9600;
+  huart6.Init.BaudRate = 115200;
   huart6.Init.WordLength = UART_WORDLENGTH_8B;
   huart6.Init.StopBits = UART_STOPBITS_1;
   huart6.Init.Parity = UART_PARITY_NONE;
