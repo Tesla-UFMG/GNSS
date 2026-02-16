@@ -31,7 +31,17 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "fdcan_config.h"
+#include "GNSSDriver.h"
+#include "print.h"
+#include "state_machine.h"
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <time.h>
 
 /* USER CODE END Includes */
 
