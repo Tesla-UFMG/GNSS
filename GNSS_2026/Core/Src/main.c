@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2026 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -31,6 +31,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define TX_TIMEOUT 500
+#define FDCAN_FILTER_ID1 0x000
+#define FDCAN_FILTER_ID2 0x7FF
 
 /* USER CODE END PD */
 
@@ -43,29 +46,58 @@
 
 FDCAN_HandleTypeDef hfdcan1;
 
+TIM_HandleTypeDef htim3;
+
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
+FDCAN_TxHeaderTypeDef TxHeader;
+FDCAN_RxHeaderTypeDef RxHeader;
+uint8_t RxData[8] = {0};
+FDCAN_FilterTypeDef sFilterConfig;
+
+void FDCAN_Restart() {
+    if (HAL_FDCAN_Stop(&hfdcan1) != HAL_OK) {
+//        Error_Handler();
+    }
+    if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) {
+//    	Error_Handler();
+    }
+}
+
+HAL_StatusTypeDef FDCAN_SendMessage(uint16_t id, uint8_t *TxData) {
+	TxHeader.Identifier = id;
+	HAL_StatusTypeDef status = HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData);
+
+	FDCAN_Restart();
+
+	return status;
+}
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void SystemPower_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_FDCAN1_Init(void);
+static void MX_ICACHE_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-int _write(int file, char *ptr, int len)
-{
-    HAL_UART_Transmit(&huart3, (uint8_t*)ptr, len, HAL_MAX_DELAY);
-    return len;
-}
+uint8_t rx_buff[MAX_NMEA_LEN];
+
+// inicializa a estrutura que salva os dados do gnss
+gnss_data_t gnss_data;
+
+// inicializa maquina de estados
+system_state_t system_state = STATE_IDLE;
 
 /* USER CODE END 0 */
 
@@ -91,9 +123,6 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
-  /* Configure the System Power */
-  SystemPower_Config();
-
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
@@ -102,31 +131,129 @@ int main(void)
   MX_GPIO_Init();
   MX_USART3_UART_Init();
   MX_FDCAN1_Init();
+  MX_ICACHE_Init();
+  MX_USART1_UART_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
+	// HAL_UART_Receive_IT(&huart1, rx_buff, MAX_NMEA_LEN);
+	HAL_UARTEx_ReceiveToIdle_IT(&huart1, rx_buff, MAX_NMEA_LEN);
+	print_init(&huart3);
+
+//	uint8_t change_baud[MAX_NMEA_LEN] = "$PSTMSETPAR,3102,0xA*12\r\n";
+//	uint8_t change_sample_rate[MAX_NMEA_LEN] = "$PSTMSETPAR,1303,0.2*36\r\n";
+//	uint8_t save_par[MAX_NMEA_LEN] = "$PSTMSAVEPAR*58\r\n";
+//	uint8_t reset[MAX_NMEA_LEN] = "$PSTMSRR*49\r\n";
+//	HAL_UART_Transmit(&huart1, change_sample_rate, MAX_NMEA_LEN, 1000);
+//	HAL_UART_Transmit(&huart1, save_par, MAX_NMEA_LEN, 1000);
+//	HAL_UART_Transmit(&huart1, reset, MAX_NMEA_LEN, 1000);
+
+//	HAL_UART_Transmit(&huart1, change_baud, MAX_NMEA_LEN, 1000);
+//	HAL_UART_Transmit(&huart1, save_par, MAX_NMEA_LEN, 1000);
+//	HAL_UART_Transmit(&huart1, reset, MAX_NMEA_LEN, 1000);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  HAL_FDCAN_Start(&hfdcan1);
+	HAL_TIM_Base_Start_IT(&htim3);
 
-  while (1)
-  {
+	int counter = 0;
+	while (1)
+	{
+		counter++;
+//		continue;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  uint8_t TxData[8] = {120};
-	  HAL_GPIO_TogglePin(LED_DEBUG1_GPIO_Port, LED_DEBUG1_Pin);
-	  FDCAN_SendMessage(LATITUDE_CAN_ID, TxData);
+		switch (system_state) {
 
-	  HAL_Delay(500);
+		case STATE_RECEIVE_UART: {
+			HAL_GPIO_TogglePin(LED_DEBUG1_GPIO_Port, LED_DEBUG1_Pin);
 
-//	  if (HAL_GPIO_ReadPin(DEBUG_BTN_GPIO_Port, DEBUG_BTN_Pin) == GPIO_PIN_RESET) {
-//		  HAL_GPIO_WritePin(LED_DEBUG1_GPIO_Port, LED_DEBUG1_Pin, GPIO_PIN_RESET);
-//	  } else {
-//		  HAL_GPIO_WritePin(LED_DEBUG1_GPIO_Port, LED_DEBUG1_Pin, GPIO_PIN_SET);
-//	  }
-  }
+//			HAL_UART_Transmit(&huart3, rx_buff,
+//								MAX_NMEA_LEN,
+//								TX_TIMEOUT);
+//
+//			break;
+
+			// novos dados chegaram no DMA
+			// primeira coisa é filtrar onde começa e onde termina a mensagem
+			const char *start = (char*) rx_buff;
+			const char *begin, *end;
+
+			while ((begin = strchr(start, '$')) != NULL) {
+				end = strchr(begin, '\n');
+				if (!end)
+					break;  // no newline after '$' → stop
+
+				// index de inicio e fim determinados. salva no nmea_sentence
+				uint8_t sentence_size = end - begin + 1; // includes \n
+				char *nmea_sentence = (char*) malloc(
+						sentence_size * sizeof(char));
+				memcpy(nmea_sentence, begin, sentence_size);
+
+				// nmea_sentence agora contem uma sentença nmea. joga para os parsers
+				NMEA_Type nmea_type = NMEA_UNKNOWN;
+
+				if (classify_nmea(&nmea_type, nmea_sentence) != NO_ERROR) {
+					continue; // falha na classificacao
+				}
+
+				switch (nmea_type) {
+				case NMEA_GPGGA: {
+					if (parse_gpgga(&gnss_data, nmea_sentence) != NO_ERROR) {
+						continue; // falha no parse
+					}
+					break;
+				}
+
+				case NMEA_GPRMC: {
+					if (parse_gprmc(&gnss_data, nmea_sentence) != NO_ERROR) {
+						continue; // falha no parse
+					}
+					break;
+				}
+				case NMEA_UNKNOWN:
+					break;
+				}
+
+				free(nmea_sentence);
+				nmea_sentence = NULL;
+
+				start = end + 1; // move forward after the newline
+			}
+
+			change_state(&system_state, STATE_IDLE);
+			break;
+		}
+
+		case STATE_SEND_UART: {
+			// timer disparou: faz o envio
+			//			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+
+			char uart_output_message[MAX_NMEA_LEN] = { '\0' };
+			if (save_to_message(&gnss_data, uart_output_message, MAX_NMEA_LEN)
+					!= NO_ERROR) {
+				continue; // messaging failed
+			}
+
+			HAL_UART_Transmit(&huart3, (uint8_t*) uart_output_message,
+					MAX_NMEA_LEN,
+					TX_TIMEOUT);
+
+			change_state(&system_state, STATE_IDLE);
+
+//			uint8_t TxData[8] = {25};
+//			FDCAN_SendMessage(262, TxData);
+
+			break;
+		}
+		case STATE_IDLE:
+		default: {
+			break;
+		}
+		}
+	}
   /* USER CODE END 3 */
 }
 
@@ -157,7 +284,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 1;
   RCC_OscInitStruct.PLL.PLLN = 16;
   RCC_OscInitStruct.PLL.PLLP = 2;
-  RCC_OscInitStruct.PLL.PLLQ = 2;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
   RCC_OscInitStruct.PLL.PLLR = 2;
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLLVCIRANGE_1;
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
@@ -184,21 +311,6 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief Power Configuration
-  * @retval None
-  */
-static void SystemPower_Config(void)
-{
-
-  /*
-   * PWR Privilege Configuration
-   */
-  HAL_PWR_ConfigAttributes(PWR_ALL, PWR_NSEC_PRIV);
-/* USER CODE BEGIN PWR */
-/* USER CODE END PWR */
-}
-
-/**
   * @brief FDCAN1 Initialization Function
   * @param None
   * @retval None
@@ -217,10 +329,10 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
   hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
-  hfdcan1.Init.AutoRetransmission = DISABLE;
+  hfdcan1.Init.AutoRetransmission = ENABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
-  hfdcan1.Init.NominalPrescaler = 16;
+  hfdcan1.Init.NominalPrescaler = 8;
   hfdcan1.Init.NominalSyncJumpWidth = 1;
   hfdcan1.Init.NominalTimeSeg1 = 13;
   hfdcan1.Init.NominalTimeSeg2 = 2;
@@ -228,7 +340,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.DataSyncJumpWidth = 1;
   hfdcan1.Init.DataTimeSeg1 = 1;
   hfdcan1.Init.DataTimeSeg2 = 1;
-  hfdcan1.Init.StdFiltersNbr = 0;
+  hfdcan1.Init.StdFiltersNbr = 1;
   hfdcan1.Init.ExtFiltersNbr = 0;
   hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
   if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
@@ -236,42 +348,161 @@ static void MX_FDCAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN FDCAN1_Init 2 */
-  FDCAN_FilterTypeDef sFilterConfig;
+	sFilterConfig.IdType = FDCAN_STANDARD_ID;
+	sFilterConfig.FilterIndex = 0;
+	sFilterConfig.FilterType = FDCAN_FILTER_MASK;
+	sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+	sFilterConfig.FilterID1 = FDCAN_FILTER_ID1;
+	sFilterConfig.FilterID2 = FDCAN_FILTER_ID2;
 
-  sFilterConfig.IdType = FDCAN_STANDARD_ID;
-  sFilterConfig.FilterIndex = 0;
-  sFilterConfig.FilterType = FDCAN_FILTER_MASK;
-  sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-  sFilterConfig.FilterID1 = 0x000;
-  sFilterConfig.FilterID2 = 0x000;
+	if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK){
+		Error_Handler();
+	}
 
-  if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK){
-      Error_Handler();
-  }
+	if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK){
+		Error_Handler();
+	}
 
-  if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK){
-      Error_Handler();
-  }
+	if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK){
+		Error_Handler();
+	}
 
-  if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK){
-      Error_Handler();
-  }
+	HAL_NVIC_SetPriority(FDCAN1_IT0_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(FDCAN1_IT0_IRQn);
+	HAL_NVIC_SetPriority(FDCAN1_IT1_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(FDCAN1_IT1_IRQn);
 
-  HAL_NVIC_SetPriority(FDCAN1_IT0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(FDCAN1_IT0_IRQn);
-  HAL_NVIC_SetPriority(FDCAN1_IT1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(FDCAN1_IT1_IRQn);
-
-  TxHeader.IdType = FDCAN_STANDARD_ID;
-  TxHeader.TxFrameType = FDCAN_DATA_FRAME;
-  TxHeader.DataLength = FDCAN_DLC_BYTES_8;
-  TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-  TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
-  TxHeader.FDFormat = FDCAN_CLASSIC_CAN;
-  TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-  TxHeader.MessageMarker = 0;
-
+	TxHeader.Identifier = 0x000;
+	TxHeader.IdType = FDCAN_STANDARD_ID;
+	TxHeader.TxFrameType = FDCAN_DATA_FRAME;
+	TxHeader.DataLength = FDCAN_DLC_BYTES_8;
+	TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+	TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
+	TxHeader.FDFormat = FDCAN_CLASSIC_CAN;
+	TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+	TxHeader.MessageMarker = 0;
   /* USER CODE END FDCAN1_Init 2 */
+
+}
+
+/**
+  * @brief ICACHE Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ICACHE_Init(void)
+{
+
+  /* USER CODE BEGIN ICACHE_Init 0 */
+
+  /* USER CODE END ICACHE_Init 0 */
+
+  /* USER CODE BEGIN ICACHE_Init 1 */
+
+  /* USER CODE END ICACHE_Init 1 */
+
+  /** Enable instruction cache (default 2-ways set associative cache)
+  */
+  if (HAL_ICACHE_Enable() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ICACHE_Init 2 */
+
+  /* USER CODE END ICACHE_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 1787;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 1787;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -336,9 +567,13 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_DEBUG1_GPIO_Port, LED_DEBUG1_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, WAKEUP_GNSS_Pin|RESET_GNSS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : DEBUG_BTN_Pin */
   GPIO_InitStruct.Pin = DEBUG_BTN_Pin;
@@ -353,11 +588,57 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_DEBUG1_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : WAKEUP_GNSS_Pin RESET_GNSS_Pin */
+  GPIO_InitStruct.Pin = WAKEUP_GNSS_Pin|RESET_GNSS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
+		uint32_t RxFifo0ITs)
+{
+	if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET)
+	{
+		HAL_FDCAN_GetRxMessage(
+				hfdcan,
+				FDCAN_RX_FIFO0,
+				&RxHeader,
+				RxData
+		);
+	}
+}
+
+// void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+// {
+// 	HAL_UART_Receive_IT(&huart1, rx_buff, MAX_NMEA_LEN);
+// 	change_state(&system_state, STATE_RECEIVE_UART);
+// }
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+  if (huart->Instance == USART1)
+  {
+    // Size = number of received bytes before IDLE
+    change_state(&system_state, STATE_RECEIVE_UART);
+
+    // Restart reception
+    HAL_UARTEx_ReceiveToIdle_IT(&huart1, rx_buff, MAX_NMEA_LEN);
+  }
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if (htim->Instance == TIM3)
+	{
+		change_state(&system_state, STATE_SEND_UART);
+	}
+}
 
 /* USER CODE END 4 */
 
@@ -368,11 +649,11 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
+	/* User can add his own implementation to report the HAL error return state */
+	__disable_irq();
+	while (1)
+	{
+	}
   /* USER CODE END Error_Handler_Debug */
 }
 
@@ -387,7 +668,7 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
+	/* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }

@@ -31,7 +31,17 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "fdcan_config.h"
+#include "GNSSDriver.h"
+#include "print.h"
+#include "state_machine.h"
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <time.h>
 
 /* USER CODE END Includes */
 
@@ -62,6 +72,10 @@ void Error_Handler(void);
 #define DEBUG_BTN_GPIO_Port GPIOA
 #define LED_DEBUG1_Pin GPIO_PIN_3
 #define LED_DEBUG1_GPIO_Port GPIOA
+#define WAKEUP_GNSS_Pin GPIO_PIN_4
+#define WAKEUP_GNSS_GPIO_Port GPIOB
+#define RESET_GNSS_Pin GPIO_PIN_5
+#define RESET_GNSS_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
