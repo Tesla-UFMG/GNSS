@@ -41,6 +41,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
@@ -58,6 +59,7 @@ static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -105,6 +107,7 @@ int main(void) {
 	MX_USART2_UART_Init();
 	MX_USART1_UART_Init();
 	MX_TIM3_Init();
+	MX_TIM4_Init();
 	/* USER CODE BEGIN 2 */
 //  HAL_UARTEx_ReceiveToIdle_IT(&huart1, rx_buff, MAX_NMEA_LEN);
 //  HAL_UART_Receive_DMA(&huart1, rx_buff, MAX_NMEA_LEN);
@@ -117,56 +120,111 @@ int main(void) {
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	HAL_TIM_Base_Start_IT(&htim3);
-	int counter = 0;
-	while (1) {
-		counter++;
+	HAL_TIM_Base_Start_IT(&htim4);
 
+	while (1) {
 		// continue;
 		switch (system_state) {
 
 		case STATE_RECEIVE_UART: {
-
-
-			//			HAL_UART_Transmit(&huart3, rx_buff,
-			//								MAX_NMEA_LEN,
-			//								TX_TIMEOUT);
-			//
-			//			break;
-
 			// novos dados chegaram no DMA
-			// primeira coisa é filtrar onde começa e onde termina a mensagem
-			const char *start = (char*) rx_buff;
-			const char *begin, *end;
+			// identifica os inicios e fins das mensagens
+			const uint8_t MAX_NUMBER_OF_SENTENCES = 20;
+			int16_t list_of_start_idxs[MAX_NUMBER_OF_SENTENCES];
+			int16_t list_of_end_idxs[MAX_NUMBER_OF_SENTENCES];
 
-			while ((begin = strchr(start, '$')) != NULL) {
-				end = strchr(begin, '\n');
-				if (!end)
-					break;  // no newline after '$' → stop
+			// inicializa com -1
+			for (int k = 0; k < MAX_NUMBER_OF_SENTENCES; ++k) {
+				list_of_start_idxs[k] = -1;
+				list_of_end_idxs[k] = -1;
+			}
+
+			// varre o buffer inteiro e vai salvandos os inicios e fins
+			uint8_t sentence_idx = 0;
+			for (int k = 0; k < MAX_NMEA_LEN; ++k) {
+				if (sentence_idx >= MAX_NUMBER_OF_SENTENCES) {
+					break;
+				}
+
+				if (rx_buff[k] == '$') {
+					list_of_start_idxs[sentence_idx] = k;
+					sentence_idx++;
+				}
+
+				if (rx_buff[k] == '\n' && sentence_idx > 0
+						&& list_of_start_idxs[sentence_idx - 1] != -1) {
+					// so pega o final se comecou a sentenca antes
+					list_of_end_idxs[sentence_idx - 1] = k;
+				}
+			}
+
+			// verifica se esta igual o numero de start e end
+			uint8_t checked_started = 0, checked_end = 0;
+			for (int k = 0; k < MAX_NUMBER_OF_SENTENCES; ++k) {
+				if (list_of_start_idxs[k] != -1) {
+					checked_started++;
+				}
+				if (list_of_end_idxs[k] != -1) {
+					checked_end++;
+				}
+			}
+
+			if (checked_started != checked_end) {
+				// falha na separação das sentenças. break na FSM e descarta esse buffer
+				change_state(&system_state, STATE_IDLE);
+				break;
+			}
+
+			if (checked_started == 0 || checked_end == 0) {
+				// sem sentencas NMEA. descarta
+				change_state(&system_state, STATE_IDLE);
+				break;
+			}
+
+			// para cada sentenca, parseia
+			for (int k = 0; k < checked_started; ++k) {
+				int16_t start_idx = list_of_start_idxs[k];
+				int16_t end_idx = list_of_end_idxs[k];
+
+				if (start_idx >= end_idx) {
+					// vai para a proxima sentenca, ignora essa
+					continue;
+				}
+
+				if (start_idx >= MAX_NMEA_LEN || end_idx >= MAX_NMEA_LEN) {
+					// vai para a proxima sentenca, ignora essa
+					continue;
+				}
 
 				// index de inicio e fim determinados. salva no nmea_sentence
-				uint8_t sentence_size = end - begin + 1; // includes \n
+				uint8_t sentence_size = end_idx - start_idx + 1; // inclui o \n
 				char *nmea_sentence = (char*) malloc(
 						sentence_size * sizeof(char));
-				memcpy(nmea_sentence, begin, sentence_size);
+
+				int16_t nmea_sentence_idx = 0;
+				for (int16_t k = start_idx; k <= end_idx; ++k) {
+					nmea_sentence[nmea_sentence_idx] = rx_buff[k];
+					nmea_sentence_idx++;
+				}
 
 				// nmea_sentence agora contem uma sentença nmea. joga para os parsers
 				NMEA_Type nmea_type = NMEA_UNKNOWN;
 
 				if (classify_nmea(&nmea_type, nmea_sentence) != NO_ERROR) {
-					continue; // falha na classificacao
+					continue; // falha na classificacao: vai para a proxima
 				}
 
 				switch (nmea_type) {
 				case NMEA_GPGGA: {
 					if (parse_gpgga(&gnss_data, nmea_sentence) != NO_ERROR) {
-						continue; // falha no parse
+						continue; // falha no parse: vai para a proxima
 					}
 					break;
 				}
 
 				case NMEA_GPRMC: {
 					if (parse_gprmc(&gnss_data, nmea_sentence) != NO_ERROR) {
-						continue; // falha no parse
+						continue; // falha no parse: vai para a proxima
 					}
 					break;
 				}
@@ -176,12 +234,12 @@ int main(void) {
 
 				free(nmea_sentence);
 				nmea_sentence = NULL;
-
-				start = end + 1; // move forward after the newline
 			}
 
+			// finalizei o parse do bufer
 			change_state(&system_state, STATE_IDLE);
 			break;
+
 		}
 
 		case STATE_SEND_UART: {
@@ -191,9 +249,6 @@ int main(void) {
 					!= NO_ERROR) {
 				continue; // messaging failed
 			}
-
-//			HAL_UART_Transmit(&huart3, (uint8_t*) uart_output_message,
-//			MAX_NMEA_LEN, TX_TIMEOUT);
 
 			print_message(uart_output_message);
 
@@ -302,6 +357,48 @@ static void MX_TIM3_Init(void) {
 	/* USER CODE BEGIN TIM3_Init 2 */
 
 	/* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+ * @brief TIM4 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM4_Init(void) {
+
+	/* USER CODE BEGIN TIM4_Init 0 */
+
+	/* USER CODE END TIM4_Init 0 */
+
+	TIM_ClockConfigTypeDef sClockSourceConfig = { 0 };
+	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
+
+	/* USER CODE BEGIN TIM4_Init 1 */
+
+	/* USER CODE END TIM4_Init 1 */
+	htim4.Instance = TIM4;
+	htim4.Init.Prescaler = 1999;
+	htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim4.Init.Period = 7999;
+	htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_Base_Init(&htim4) != HAL_OK) {
+		Error_Handler();
+	}
+	sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+	if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK) {
+		Error_Handler();
+	}
+	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+	if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig)
+			!= HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN TIM4_Init 2 */
+
+	/* USER CODE END TIM4_Init 2 */
 
 }
 
@@ -443,12 +540,20 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 
 		// blink LED
 		HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+
+		// reset the watchdog timer
+		TIM4->CNT = 0;
 	}
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim->Instance == TIM3) {
 		change_state(&system_state, STATE_SEND_UART);
+	}
+
+	if (htim->Instance == TIM4) {
+		// watchdog timer: reset the UART communication
+		HAL_UARTEx_ReceiveToIdle_IT(&huart1, rx_buff, MAX_NMEA_LEN);
 	}
 }
 

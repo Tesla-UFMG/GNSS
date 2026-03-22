@@ -7,7 +7,7 @@
 #define KNOTS_TO_KMH_CONVERSION 1.852
 #define GNSS_CAN_ID 262
 #define TIMEZONE_OFFSET 3 * 3600 * (-1)
-#define MAX_NMEA_LEN 1024
+#define MAX_NMEA_LEN 512
 
 typedef enum {
 	INVALID_FIX = 0,
