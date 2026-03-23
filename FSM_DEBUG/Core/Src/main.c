@@ -252,9 +252,27 @@ int main(void) {
 
 			print_message(uart_output_message);
 
-//			// envia para a CAN
-//			uint8_t can_tx_data[8] = { 10, 20, 30, 40, 50, 60, 70, 80 };
-//			FDCAN_SendMessage(262, can_tx_data);
+			// formata os dados para a CAN
+			uint8_t lat_buf[8];
+			save_lat_to_buffer(&gnss_data, lat_buf);
+
+			uint8_t lon_buf[8];
+			save_lon_to_buffer(&gnss_data, lon_buf);
+
+			uint8_t utc_buf[8]; // gets unix timestamp in miliseconds
+			save_utc_to_buffer(&gnss_data, utc_buf);
+
+			uint8_t general_buf[8];
+			save_general_to_buffer(&gnss_data, general_buf);
+
+			double returned_lat = 0;
+			get_latitude_from_buffer(lat_buf, &returned_lat);
+
+			// envia para a CAN
+//			FDCAN_SendMessage(LATITUDE_CAN_ID, lat_buf);
+//			FDCAN_SendMessage(LONGITUDE_CAN_ID, lon_buf);
+//			FDCAN_SendMessage(UTC_CAN_ID, utc_buf);
+//			FDCAN_SendMessage(GENERAL_GNSS_CAN_ID, general_buf);
 
 			change_state(&system_state, STATE_IDLE);
 

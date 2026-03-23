@@ -61,25 +61,6 @@ error_code_t init(gnss_data_t *gnss_data) {
 	return NO_ERROR;
 }
 
-error_code_t print_data(gnss_data_t *gnss_data) {
-	if (gnss_data == NULL) {
-		return ERROR_BAD_ARGUMENT;
-	}
-
-//	printf("Latitude: %.8f\n", gnss_data->latitude);
-//	printf("Longitude: %.8f\n", gnss_data->longitude);
-//	printf("Altitude: %.2f m\n", gnss_data->altitude);
-//	printf("Ground Speed: %.2f m/s\n", gnss_data->ground_speed);
-//	printf("UTC Date: %02d/%02d/%02d\n", gnss_data->utc_date.day,
-//			gnss_data->utc_date.month, gnss_data->utc_date.year);
-//	printf("UTC Time: %02d:%02d:%.3f\n", gnss_data->utc_time.hh,
-//			gnss_data->utc_time.mm, gnss_data->utc_time.ss);
-//	printf("Fix Quality: %s\n",
-//			(gnss_data->fix_quality == VALID_FIX) ? "Valid" : "Invalid");
-
-	return NO_ERROR;
-}
-
 error_code_t parse_gpgga(gnss_data_t *gnss_data, char *sentence) {
 	// we take ONLY altitude from here
 	if (gnss_data == NULL || sentence == NULL) {
@@ -177,10 +158,65 @@ error_code_t save_to_message(gnss_data_t* gnss_data, char* message, int size) {
 		  unix_timestamp = 0;
 	  }
 
-	  snprintf(message, size, "%d,%.8f,%.8f,%.2f,%.2f,%u,%llu\r\n", GNSS_CAN_ID,
+	  snprintf(message, size, "%d,%.8f,%.8f,%.2f,%.2f,%u,%llu\r\n", LATITUDE_CAN_ID,
 	           gnss_data->latitude, gnss_data->longitude, gnss_data->altitude,
 	           gnss_data->ground_speed, gnss_data->fix_quality, unix_timestamp);
 
   return NO_ERROR;
 }
+
+error_code_t save_lat_to_buffer(gnss_data_t* gnss_data, uint8_t* buf) {
+	double lat = gnss_data->latitude;
+	int64_t lat_int = (int64_t)(lat * 1e7);
+	memcpy(buf, &lat_int, sizeof(lat_int));
+
+	return NO_ERROR;
+}
+
+error_code_t save_lon_to_buffer(gnss_data_t* gnss_data, uint8_t* buf) {
+	double lon = gnss_data->longitude;
+	int64_t lon_int = (int64_t)(lon * 1e7);
+	memcpy(buf, &lon_int, sizeof(lon_int));
+
+	return NO_ERROR;
+}
+
+error_code_t save_utc_to_buffer(gnss_data_t* gnss_data, uint8_t* buf) {
+	uint64_t unix_timestamp = toUnixMillis(gnss_data);
+	memcpy(buf, &unix_timestamp, sizeof(unix_timestamp));
+
+	return NO_ERROR;
+}
+
+error_code_t save_general_to_buffer(gnss_data_t* gnss_data, uint8_t* buf) {
+	double altitude = gnss_data->altitude;
+	double ground_speed = gnss_data->ground_speed;
+
+	uint8_t fix_quality = gnss_data->fix_quality == VALID_FIX ? 1 : 0;
+	uint16_t altitude_int = (uint16_t)(altitude * 100);
+	uint16_t ground_speed_int = (uint16_t)(ground_speed * 100);
+
+	buf[0] = (altitude_int >> 8) & 0xFF; // MSB
+	buf[1] = altitude_int & 0xFF;
+	buf[2] = (ground_speed_int >> 8) & 0xFF; // MSB
+	buf[3] = ground_speed_int & 0xFF;
+	buf[4] = fix_quality;
+	buf[5] = 0;
+	buf[6] = 0;
+	buf[7] = 0;
+
+	return NO_ERROR;
+}
+
+error_code_t get_latitude_from_buffer(uint8_t* buf, double* lat) {
+	int64_t lat_int = 0;
+	memcpy(&lat_int, buf, 8);
+
+	*lat = lat_int / (double)(1e7);
+
+	return NO_ERROR;
+}
+
+
+
 
