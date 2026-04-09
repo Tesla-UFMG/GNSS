@@ -77,7 +77,7 @@ void loop() {
   }
   // byte testData[8] = {10,20,30,40,50,60,70,80};
   // CAN.sendMsgBuf(201, 0, 8, testData);
-  delay(10);
+  // delay(10);
   return;
 
   delay(100);   // send data per 10ms
