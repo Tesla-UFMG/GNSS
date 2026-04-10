@@ -265,9 +265,6 @@ int main(void) {
 			uint8_t general_buf[8];
 			save_general_to_buffer(&gnss_data, general_buf);
 
-			double returned_lat = 0;
-			get_latitude_from_buffer(lat_buf, &returned_lat);
-
 			// envia para a CAN
 //			FDCAN_SendMessage(LATITUDE_CAN_ID, lat_buf);
 //			FDCAN_SendMessage(LONGITUDE_CAN_ID, lon_buf);
