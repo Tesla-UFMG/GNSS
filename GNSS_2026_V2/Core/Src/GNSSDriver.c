@@ -158,9 +158,10 @@ error_code_t save_to_message(gnss_data_t* gnss_data, char* message, int size) {
 		  unix_timestamp = 0;
 	  }
 
-	  snprintf(message, size, "%d,%.8f,%.8f,%.2f,%.2f,%u,%llu\r\n", LATITUDE_CAN_ID,
+	  snprintf(message, size, "%d,%.8f,%.8f,%.2f,%.2f,%u,%u,%.2f,%u\r\n", LATITUDE_CAN_ID,
 	           gnss_data->latitude, gnss_data->longitude, gnss_data->altitude,
-	           gnss_data->ground_speed, gnss_data->fix_quality, unix_timestamp);
+	           gnss_data->ground_speed, gnss_data->utc_time.hh,
+			   gnss_data->utc_time.mm, gnss_data->utc_time.ss, gnss_data->fix_quality);
 
   return NO_ERROR;
 }

@@ -173,6 +173,9 @@ int main(void)
 		switch (system_state) {
 
 		case STATE_RECEIVE_UART: {
+//			print_message(rx_buff);
+//			print_message("Started \r\n");
+
 			// novos dados chegaram no DMA
 			// identifica os inicios e fins das mensagens
 			const uint8_t MAX_NUMBER_OF_SENTENCES = 20;
@@ -204,6 +207,8 @@ int main(void)
 				}
 			}
 
+//			print_message("inicios e fins salvos \r\n");
+
 			// verifica se esta igual o numero de start e end
 			uint8_t checked_started = 0, checked_end = 0;
 			for (int k = 0; k < MAX_NUMBER_OF_SENTENCES; ++k) {
@@ -215,17 +220,23 @@ int main(void)
 				}
 			}
 
-			if (checked_started != checked_end) {
+			if (checked_started < checked_end) {
 				// falha na separação das sentenças. break na FSM e descarta esse buffer
 				change_state(&system_state, STATE_IDLE);
 				break;
 			}
+
+			checked_started = checked_end; // ignora as que comecou sem terminar
+
+//			print_message("start %u == end %u \r\n", checked_started, checked_end);
 
 			if (checked_started == 0 || checked_end == 0) {
 				// sem sentencas NMEA. descarta
 				change_state(&system_state, STATE_IDLE);
 				break;
 			}
+
+//			print_message("sentenças separadas \r\n");
 
 			// para cada sentenca, parseia
 			for (int k = 0; k < checked_started; ++k) {
@@ -246,6 +257,7 @@ int main(void)
 				uint8_t sentence_size = end_idx - start_idx + 1; // inclui o \n
 				char *nmea_sentence = (char*) malloc(
 						sentence_size * sizeof(char));
+
 
 				int16_t nmea_sentence_idx = 0;
 				for (int16_t k = start_idx; k <= end_idx; ++k) {
@@ -284,6 +296,8 @@ int main(void)
 
 			// finalizei o parse do buffer
 			change_state(&system_state, STATE_IDLE);
+
+//			print_message("Finished \r\n");
 			break;
 
 		}
@@ -297,6 +311,8 @@ int main(void)
 			}
 
 			print_message(uart_output_message);
+//
+//			print_message(rx_buff);
 
 			// formata os dados para a CAN
 			uint8_t lat_buf[8];
@@ -738,7 +754,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		HAL_GPIO_TogglePin(LED_DEBUG1_GPIO_Port, LED_DEBUG1_Pin);
 
 		// reset the watchdog timer
-		TIM4->CNT = 0;
+		TIM6->CNT = 0;
 	}
 }
 
@@ -750,6 +766,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim->Instance == TIM6) {
 		// watchdog timer: reset the UART communication
 		HAL_UART_Receive_IT(&huart1, rx_buff, MAX_NMEA_LEN);
+
+		print_message("Watchdog fired\r\n");
+
+		TIM6->CNT = 0;
 	}
 }
 
