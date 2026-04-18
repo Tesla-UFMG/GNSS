@@ -1,5 +1,8 @@
 #include "GNSSDriver.h"
 
+utc_date_t default_date = { 17, 4, 26 };
+utc_time_t default_time = { 11, 35, 21.45 };
+
 // ------- local helpers --------
 static double nmea_to_decimal(const char* nmea, const char* hemisphere) {
   if (strlen(nmea) < 4) return 0.0;
@@ -35,7 +38,7 @@ static uint64_t toUnixMillis(gnss_data_t* gnss_data) {
   // adds the miliseconds again
   uint64_t unix_timestamp =
       (uint64_t)seconds * 1000 +
-      (gnss_data->utc_time.ss - (int)gnss_data->utc_time.ss);
+      (uint64_t)((gnss_data->utc_time.ss - (int)gnss_data->utc_time.ss) * 1000);
 
   // Return milliseconds
   return unix_timestamp;
@@ -46,9 +49,6 @@ error_code_t init(gnss_data_t *gnss_data) {
 	if (gnss_data == NULL) {
 		return ERROR_BAD_ARGUMENT;
 	}
-
-	utc_date_t default_date = { 0, 0, 0 };
-	utc_time_t default_time = { 0, 0, 0.0 };
 
 	gnss_data->latitude = 0.0;
 	gnss_data->longitude = 0.0;
@@ -104,6 +104,8 @@ error_code_t parse_gprmc(gnss_data_t *gnss_data, char *sentence) {
 			gnss_data->utc_time.hh = (uint8_t) hh;
 			gnss_data->utc_time.mm = (uint8_t) mm;
 			gnss_data->utc_time.ss = ss;
+
+//			gnss_data->utc_time = default_time;
 			break;
 		}
 		case 2:
@@ -126,6 +128,8 @@ error_code_t parse_gprmc(gnss_data_t *gnss_data, char *sentence) {
 			gnss_data->utc_date.day = (uint8_t) dd;
 			gnss_data->utc_date.month = (uint8_t) mm;
 			gnss_data->utc_date.year = (uint8_t) yy;
+
+//			gnss_data->utc_date = default_date;
 			break;
 		}
 		}
@@ -186,6 +190,9 @@ error_code_t save_utc_to_buffer(gnss_data_t* gnss_data, uint8_t* buf) {
 	uint64_t unix_timestamp = toUnixMillis(gnss_data);
 	memcpy(buf, &unix_timestamp, sizeof(unix_timestamp));
 
+	uint64_t test_utc = 0;
+	get_utc_from_buffer(buf, &test_utc);
+
 	return NO_ERROR;
 }
 
@@ -214,6 +221,15 @@ error_code_t get_latitude_from_buffer(uint8_t* buf, double* lat) {
 	memcpy(&lat_int, buf, 8);
 
 	*lat = lat_int / (double)(1e7);
+
+	return NO_ERROR;
+}
+
+error_code_t get_utc_from_buffer(uint8_t* buf, uint64_t* utc) {
+	uint64_t utc_int = 0;
+	memcpy(&utc_int, buf, 8);
+
+	*utc = utc_int;
 
 	return NO_ERROR;
 }

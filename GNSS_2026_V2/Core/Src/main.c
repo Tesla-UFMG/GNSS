@@ -167,6 +167,8 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim6);
 	int counter = 0;
 
+	init(&gnss_data);
+
 	while (1) {
 		counter++;
 

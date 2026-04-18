@@ -115,6 +115,11 @@ void loop() {
       memcpy(&timestamp, rxData, sizeof(uint64_t));
       // Serial.print("timestamp = ");
       // print64(timestamp);
+      // for (int i = 0; i < 8; ++i) {
+      //   Serial.print(rxData[i]);
+      //   Serial.print(" ");
+      // }
+      // Serial.println();
     }
 
     if (rxID == 265) {

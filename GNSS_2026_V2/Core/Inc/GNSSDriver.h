@@ -63,5 +63,6 @@ error_code_t save_general_to_buffer(gnss_data_t* gnss_data, uint8_t* buf);
 
 /* ----- CONVERT BYTES FROM CAN TO GNSS DATA FOR CAN RECEPTION -----  */
 error_code_t get_latitude_from_buffer(uint8_t* buf, double* lat);
+error_code_t get_utc_from_buffer(uint8_t* buf, uint64_t* utc);
 
 #endif // GNSS_DRIVER_H
