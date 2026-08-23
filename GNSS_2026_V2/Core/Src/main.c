@@ -102,6 +102,9 @@ gnss_data_t gnss_data;
 // inicializa maquina de estados
 system_state_t system_state = STATE_IDLE;
 
+// flags para ISR
+uint8_t isTeseoReset = 0;
+
 /* USER CODE END 0 */
 
 /**
@@ -171,6 +174,12 @@ int main(void)
 
 	while (1) {
 		counter++;
+
+		if(isTeseoReset == 1) {
+			HAL_Delay(50);
+			HAL_GPIO_WritePin(RESET_GNSS_GPIO_Port, RESET_GNSS_Pin, GPIO_PIN_SET);
+			isTeseoReset = 0;
+		}
 
 		switch (system_state) {
 
@@ -579,7 +588,7 @@ static void MX_TIM6_Init(void)
 
   /* USER CODE END TIM6_Init 1 */
   htim6.Instance = TIM6;
-  htim6.Init.Prescaler = 1999;
+  htim6.Init.Prescaler = 3999;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim6.Init.Period = 7999;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -769,7 +778,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 		// watchdog timer: reset the UART communication
 		HAL_UART_Receive_IT(&huart1, rx_buff, MAX_NMEA_LEN);
 
-		print_message("Watchdog fired\r\n");
+		// reset TESEO too
+		HAL_GPIO_WritePin(RESET_GNSS_GPIO_Port, RESET_GNSS_Pin, GPIO_PIN_RESET);
+		isTeseoReset = 1;
+
 
 		TIM6->CNT = 0;
 	}

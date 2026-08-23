@@ -8,10 +8,10 @@
 #define TIMEZONE_OFFSET 3 * 3600 * (-1)
 #define MAX_NMEA_LEN 512
 
-#define LATITUDE_CAN_ID 262
-#define LONGITUDE_CAN_ID 263
-#define UTC_CAN_ID 264
-#define GENERAL_GNSS_CAN_ID 265
+#define LATITUDE_CAN_ID 13
+#define LONGITUDE_CAN_ID 14
+#define UTC_CAN_ID 12
+#define GENERAL_GNSS_CAN_ID 15
 
 typedef enum {
 	INVALID_FIX = 0,
